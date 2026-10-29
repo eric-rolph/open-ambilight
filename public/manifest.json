@@ -1,0 +1,17 @@
+{
+  "name": "Open Ambilight",
+  "short_name": "Ambilight",
+  "description": "Universal addressable LED controller and 23-scene light show suite.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#090a0f",
+  "theme_color": "#00e5ff",
+  "icons": [
+    {
+      "src": "./assets/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#090a0f" />
+    <meta name="description" content="Open Ambilight - Universal addressable LED controller and 23-scene light show for Windows 11 and Android OS." />
+    <link rel="manifest" href="./manifest.json" />
+    <title>Open Ambilight | Universal LED Control & 23-Scene Light Show</title>
+  </head>
+  <body class="bg-[#090a0f] text-slate-100 min-h-screen flex flex-col">
+    <!-- Top Navigation Bar -->
+    <header class="border-b border-white/10 bg-[#0f111a]/80 backdrop-blur-md sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-cyan-500 via-indigo-500 to-fuchsia-500 p-0.5 shadow-lg shadow-cyan-500/20">
+            <div class="w-full h-full bg-[#090a0f] rounded-[7px] flex items-center justify-center font-black text-cyan-400 text-lg">
+              ⚡
+            </div>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-cyan-300 bg-clip-text text-transparent">
+                Open Ambilight
+              </span>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-400 border border-cyan-800/50">
+                v1.0.0
+              </span>
+            </div>
+            <p class="text-xs text-slate-400 hidden sm:block">Universal USB & Wireless LED Suite</p>
+          </div>
+        </div>
+
+        <!-- Connection and Actions -->
+        <div class="flex items-center space-x-2 sm:space-x-3">
+          <!-- Connection Status Pill -->
+          <div id="connectionPill" class="flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-mono bg-red-950/40 text-red-400 border border-red-800/40">
+            <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+            <span id="connectionText">Disconnected</span>
+          </div>
+
+          <!-- Connect Button -->
+          <button
+            id="connectBtn"
+            class="px-4 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500 hover:bg-cyan-400 text-black transition-all shadow-md shadow-cyan-500/20 active:scale-95 flex items-center space-x-1.5 cursor-pointer"
+          >
+            <span>Connect USB Strip</span>
+          </button>
+
+          <!-- Install PWA Button (Hidden by default, shown when installable) -->
+          <button
+            id="pwaInstallBtn"
+            class="hidden px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 hover:bg-white/15 text-white transition-all cursor-pointer"
+            title="Install as App"
+          >
+            📥 Install App
+          </button>
+
+          <!-- GitHub Link -->
+          <a
+            href="https://github.com/eric-rolph/open-ambilight"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="p-2 rounded-lg text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 transition-colors"
+            title="View on GitHub"
+          >
+            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+            </svg>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <!-- 1. Real-Time Virtual Strip Canvas (Hero) -->
+      <section class="glass-panel rounded-2xl p-4 sm:p-6 shadow-2xl relative overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between mb-3 gap-2">
+          <div>
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-cyan-400">Live Hardware Simulator</h2>
+            <div id="activeSceneTitle" class="text-xl sm:text-2xl font-black text-white flex items-center space-x-2">
+              <span>Nerf Dart Dueling Blasters</span>
+            </div>
+          </div>
+          <!-- Telemetry Badges -->
+          <div class="flex items-center space-x-2 text-xs font-mono text-slate-400">
+            <span class="px-2 py-0.5 bg-white/5 rounded border border-white/10" id="fpsBadge">60 FPS</span>
+            <span class="px-2 py-0.5 bg-white/5 rounded border border-white/10" id="ledCountBadge">150 LEDs</span>
+            <span class="px-2 py-0.5 bg-white/5 rounded border border-white/10 hidden sm:inline" id="protocolBadge">Adalight 115200</span>
+          </div>
+        </div>
+
+        <!-- Canvas Container -->
+        <div id="stripCanvasContainer" class="w-full h-32 sm:h-40 rounded-xl relative cursor-crosshair"></div>
+
+        <!-- Playlist Progress Bar -->
+        <div id="playlistProgressContainer" class="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-400">
+          <div class="flex items-center space-x-2">
+            <button id="prevSceneBtn" class="p-1 rounded bg-white/5 hover:bg-white/10 text-white cursor-pointer" title="Previous Scene">⏮</button>
+            <button id="playPauseBtn" class="px-3 py-1 rounded bg-white/10 hover:bg-white/20 text-white font-medium cursor-pointer flex items-center space-x-1">
+              <span id="playPauseIcon">⏸</span>
+              <span id="playPauseText">Pause</span>
+            </button>
+            <button id="nextSceneBtn" class="p-1 rounded bg-white/5 hover:bg-white/10 text-white cursor-pointer" title="Next Scene">⏭</button>
+            <span id="playlistCurrentNum" class="font-mono text-slate-300 ml-2">Scene 1 of 23</span>
+          </div>
+          <div class="w-1/3 sm:w-1/2 bg-white/10 h-1.5 rounded-full overflow-hidden">
+            <div id="playlistProgressBar" class="bg-gradient-to-r from-cyan-500 to-fuchsia-500 h-full w-0 transition-all duration-100"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Mode Selector Navigation Tabs -->
+      <nav class="flex border-b border-white/10 overflow-x-auto gap-2 pb-2 scrollbar-none">
+        <button data-mode="playlist" class="mode-tab px-4 py-2 rounded-lg font-medium text-sm transition-all bg-cyan-500 text-black shadow-lg shadow-cyan-500/20 cursor-pointer">
+          ✨ 23-Scene Playlist
+        </button>
+        <button data-mode="scene" class="mode-tab px-4 py-2 rounded-lg font-medium text-sm transition-all text-slate-300 hover:text-white hover:bg-white/5 cursor-pointer">
+          🎮 Scene Explorer
+        </button>
+        <button data-mode="solid" class="mode-tab px-4 py-2 rounded-lg font-medium text-sm transition-all text-slate-300 hover:text-white hover:bg-white/5 cursor-pointer">
+          🎨 Solid & Moods
+        </button>
+        <button data-mode="screen" class="mode-tab px-4 py-2 rounded-lg font-medium text-sm transition-all text-slate-300 hover:text-white hover:bg-white/5 cursor-pointer">
+          🖥️ Screen Mirroring
+        </button>
+        <button data-mode="audio" class="mode-tab px-4 py-2 rounded-lg font-medium text-sm transition-all text-slate-300 hover:text-white hover:bg-white/5 cursor-pointer">
+          🎵 Music Reactive
+        </button>
+      </nav>
+
+      <!-- 3. Active Mode Panels -->
+
+      <!-- Panel A: Playlist Mode Settings -->
+      <section id="panelPlaylist" class="mode-panel glass-panel rounded-2xl p-6 space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <h3 class="text-base font-bold text-white mb-2">Automated Light Show Cycle</h3>
+            <p class="text-sm text-slate-400 mb-4">
+              Rotates through all 23 handcrafted addressable animations with cinematic crossfades.
+            </p>
+            <div class="space-y-4">
+              <div>
+                <div class="flex justify-between text-xs font-mono text-slate-300 mb-1">
+                  <span>Scene Duration</span>
+                  <span id="sceneDurValue">24 seconds</span>
+                </div>
+                <input id="sceneDurInput" type="range" min="8" max="60" value="24" class="w-full accent-cyan-400 cursor-pointer" />
+              </div>
+              <div>
+                <div class="flex justify-between text-xs font-mono text-slate-300 mb-1">
+                  <span>Crossfade Transition</span>
+                  <span id="crossfadeValue">1.2 seconds</span>
+                </div>
+                <input id="crossfadeInput" type="range" min="0.2" max="3.0" step="0.1" value="1.2" class="w-full accent-cyan-400 cursor-pointer" />
+              </div>
+            </div>
+          </div>
+          <div class="bg-black/30 rounded-xl p-4 border border-white/5 space-y-2">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Featured Scenes in Rotation</h4>
+            <div class="grid grid-cols-2 gap-2 text-xs text-slate-300 max-h-40 overflow-y-auto pr-1">
+              <div>• Nerf Dart Duel</div>
+              <div>• Super Mario Bros.</div>
+              <div>• Sonic the Hedgehog</div>
+              <div>• 1D Pac-Man Arcade</div>
+              <div>• Frogger Highway</div>
+              <div>• 1D Breakout Smasher</div>
+              <div>• Dragon/Phoenix Beam</div>
+              <div>• Spaceship Dogfight</div>
+              <div>• 1D Snake Game</div>
+              <div>• Black Hole Quasar</div>
+              <div>• Large Hadron Collider</div>
+              <div>• Rainbow Quicksort</div>
+              <div>• Wormhole Portals</div>
+              <div>• Firework Mortars</div>
+              <div>• Elastic Billiards</div>
+              <div>• Thermal Lava Lamp</div>
+              <div>• Northern Lights Aurora</div>
+              <div>• Supernova Shockwave</div>
+              <div>• Dueling Comets</div>
+              <div>• Rainbow KITT Scanner</div>
+              <div>• Double-Helix DNA</div>
+              <div>• Lightning Storm</div>
+              <div>• Warp-Drive Hyper-Chase</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel B: Scene Explorer Grid -->
+      <section id="panelScene" class="mode-panel hidden glass-panel rounded-2xl p-6 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+          <div>
+            <h3 class="text-base font-bold text-white">23 Handcrafted Light Show Scenes</h3>
+            <p class="text-xs text-slate-400">Click any card to immediately lock onto that animation.</p>
+          </div>
+          <!-- Category Filter Pills -->
+          <div class="flex items-center gap-1.5 text-xs font-medium">
+            <button data-cat="all" class="scene-filter px-3 py-1 rounded-md bg-cyan-500 text-black cursor-pointer">All (23)</button>
+            <button data-cat="retro-game" class="scene-filter px-3 py-1 rounded-md bg-white/5 hover:bg-white/10 text-slate-300 cursor-pointer">Retro Games</button>
+            <button data-cat="arcade-action" class="scene-filter px-3 py-1 rounded-md bg-white/5 hover:bg-white/10 text-slate-300 cursor-pointer">Action</button>
+            <button data-cat="cosmic-physics" class="scene-filter px-3 py-1 rounded-md bg-white/5 hover:bg-white/10 text-slate-300 cursor-pointer">Physics</button>
+            <button data-cat="ambient-flow" class="scene-filter px-3 py-1 rounded-md bg-white/5 hover:bg-white/10 text-slate-300 cursor-pointer">Ambient</button>
+          </div>
+        </div>
+        <div id="scenesGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+      </section>
+
+      <!-- Panel C: Solid & Mood Ambient -->
+      <section id="panelSolid" class="mode-panel hidden glass-panel rounded-2xl p-6 space-y-6">
+        <div>
+          <h3 class="text-base font-bold text-white mb-1">Static Color & Ambient Mood Presets</h3>
+          <p class="text-xs text-slate-400 mb-4">Set your strip to any static hex tone or choose from curated ambient lighting recipes.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="space-y-4">
+            <label class="block text-xs font-mono text-slate-300">Custom Color Picker</label>
+            <div class="flex items-center space-x-3">
+              <input id="solidColorInput" type="color" value="#00e5ff" class="w-16 h-12 rounded cursor-pointer bg-transparent border-0" />
+              <input id="solidHexInput" type="text" value="#00E5FF" class="bg-black/40 border border-white/10 rounded px-3 py-2 font-mono text-sm uppercase text-cyan-400 focus:outline-none focus:border-cyan-400 w-28" />
+            </div>
+          </div>
+          <div class="md:col-span-2 space-y-3">
+            <label class="block text-xs font-mono text-slate-300">Curated Lighting Presets</label>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="moodPresetsGrid"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel D: Screen Mirroring -->
+      <section id="panelScreen" class="mode-panel hidden glass-panel rounded-2xl p-6 space-y-4">
+        <div>
+          <h3 class="text-base font-bold text-white mb-1">Ambilight Screen Mirroring</h3>
+          <p class="text-xs text-slate-400">Captures your screen perimeter in real-time and extends display colors to the wall behind your monitor.</p>
+        </div>
+        <div class="p-6 rounded-xl border border-dashed border-white/20 text-center space-y-3">
+          <button id="toggleScreenBtn" class="px-6 py-2.5 rounded-lg font-semibold bg-cyan-500 hover:bg-cyan-400 text-black transition-all cursor-pointer shadow-lg shadow-cyan-500/20">
+            Start Screen Capture
+          </button>
+          <p class="text-xs text-slate-400">Uses native HTML5 getDisplayMedia. Select entire screen or game window.</p>
+        </div>
+      </section>
+
+      <!-- Panel E: Music Reactive Visualizer -->
+      <section id="panelAudio" class="mode-panel hidden glass-panel rounded-2xl p-6 space-y-4">
+        <div>
+          <h3 class="text-base font-bold text-white mb-1">Sound & Music Reactive Visualizer</h3>
+          <p class="text-xs text-slate-400">Uses Web Audio API to detect bass kicks and map frequencies across the strip.</p>
+        </div>
+        <div class="p-6 rounded-xl border border-dashed border-white/20 text-center space-y-4">
+          <button id="toggleAudioBtn" class="px-6 py-2.5 rounded-lg font-semibold bg-fuchsia-500 hover:bg-fuchsia-400 text-black transition-all cursor-pointer shadow-lg shadow-fuchsia-500/20">
+            Activate Microphone / Audio
+          </button>
+          <div class="max-w-xs mx-auto">
+            <div class="flex justify-between text-xs font-mono text-slate-300 mb-1">
+              <span>Sensitivity</span>
+              <span id="audioSensValue">1.0x</span>
+            </div>
+            <input id="audioSensInput" type="range" min="0.2" max="3.0" step="0.1" value="1.0" class="w-full accent-fuchsia-400 cursor-pointer" />
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Global Hardware & Settings Drawer -->
+      <section class="glass-panel rounded-2xl p-6 space-y-6">
+        <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
+          <span>⚙️ Hardware & Strip Configuration</span>
+        </h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <!-- Brightness -->
+          <div>
+            <div class="flex justify-between text-xs font-mono text-slate-300 mb-2">
+              <span>Master Brightness</span>
+              <span id="brightnessValue">85%</span>
+            </div>
+            <input id="brightnessInput" type="range" min="5" max="100" value="85" class="w-full accent-cyan-400 cursor-pointer" />
+          </div>
+
+          <!-- LED Count -->
+          <div>
+            <label class="block text-xs font-mono text-slate-300 mb-2">LED Count</label>
+            <input id="ledCountInput" type="number" min="10" max="600" value="150" class="w-full bg-black/40 border border-white/10 rounded px-3 py-1.5 font-mono text-sm text-white focus:outline-none focus:border-cyan-400" />
+          </div>
+
+          <!-- Color Order -->
+          <div>
+            <label class="block text-xs font-mono text-slate-300 mb-2">Color Order</label>
+            <select id="colorOrderSelect" class="w-full bg-black/40 border border-white/10 rounded px-3 py-1.5 font-mono text-sm text-white focus:outline-none focus:border-cyan-400 cursor-pointer">
+              <option value="RGB">RGB (Standard)</option>
+              <option value="GRB">GRB (WS2812B default)</option>
+              <option value="BGR">BGR</option>
+            </select>
+          </div>
+
+          <!-- Baud Rate -->
+          <div>
+            <label class="block text-xs font-mono text-slate-300 mb-2">Baud Rate</label>
+            <select id="baudRateSelect" class="w-full bg-black/40 border border-white/10 rounded px-3 py-1.5 font-mono text-sm text-white focus:outline-none focus:border-cyan-400 cursor-pointer">
+              <option value="115200" selected>115,200 (Default)</option>
+              <option value="230400">230,400</option>
+              <option value="500000">500,000</option>
+              <option value="921600">921,600</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between pt-4 border-t border-white/5 gap-4 text-xs text-slate-400">
+          <label class="flex items-center space-x-2 cursor-pointer">
+            <input id="gammaToggle" type="checkbox" checked class="accent-cyan-400 rounded" />
+            <span>Perceptual Gamma 2.2 Correction (Deep blacks, crisp contrast)</span>
+          </label>
+          <div class="flex items-center space-x-2">
+            <span>Compatible with: WS2812B, WS2811, SK6812, APA102, Arduino Adalight Kits</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-white/5 py-6 text-center text-xs text-slate-500">
+      <p>Open Ambilight &bull; Open Source under MIT License &bull; Built with Web Serial API & TypeScript</p>
+    </footer>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
