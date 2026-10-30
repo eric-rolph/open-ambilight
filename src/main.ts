@@ -174,21 +174,33 @@ function initUI() {
   });
 
   prevSceneBtn.addEventListener('click', () => {
-    const curIdx = SCENE_METADATA.findIndex((s) => s.id === settings.selectedSceneId);
-    const newIdx = (curIdx - 1 + SCENE_METADATA.length) % SCENE_METADATA.length;
-    settings.selectedSceneId = SCENE_METADATA[newIdx].id;
-    setMode('scene');
-    activeSceneTitle.textContent = SCENE_METADATA[newIdx].name;
-    renderSceneCards('all');
+    if (settings.activeMode === 'playlist') {
+      const totalCycle = SCENE_METADATA.length * settings.sceneDuration;
+      const curIdx = Math.floor((simulatedTime % totalCycle) / settings.sceneDuration);
+      const newIdx = (curIdx - 1 + SCENE_METADATA.length) % SCENE_METADATA.length;
+      simulatedTime = newIdx * settings.sceneDuration;
+    } else {
+      const curIdx = SCENE_METADATA.findIndex((s) => s.id === settings.selectedSceneId);
+      const newIdx = (curIdx - 1 + SCENE_METADATA.length) % SCENE_METADATA.length;
+      settings.selectedSceneId = SCENE_METADATA[newIdx].id;
+      setMode('scene');
+      renderSceneCards('all');
+    }
   });
 
   nextSceneBtn.addEventListener('click', () => {
-    const curIdx = SCENE_METADATA.findIndex((s) => s.id === settings.selectedSceneId);
-    const newIdx = (curIdx + 1) % SCENE_METADATA.length;
-    settings.selectedSceneId = SCENE_METADATA[newIdx].id;
-    setMode('scene');
-    activeSceneTitle.textContent = SCENE_METADATA[newIdx].name;
-    renderSceneCards('all');
+    if (settings.activeMode === 'playlist') {
+      const totalCycle = SCENE_METADATA.length * settings.sceneDuration;
+      const curIdx = Math.floor((simulatedTime % totalCycle) / settings.sceneDuration);
+      const newIdx = (curIdx + 1) % SCENE_METADATA.length;
+      simulatedTime = newIdx * settings.sceneDuration;
+    } else {
+      const curIdx = SCENE_METADATA.findIndex((s) => s.id === settings.selectedSceneId);
+      const newIdx = (curIdx + 1) % SCENE_METADATA.length;
+      settings.selectedSceneId = SCENE_METADATA[newIdx].id;
+      setMode('scene');
+      renderSceneCards('all');
+    }
   });
 
   // Connect Serial
@@ -344,15 +356,15 @@ function renderSceneCards(category = 'all') {
 function handleSerialStatusChange(status: ConnectionStatus, message?: string) {
   if (status === 'connected') {
     connectionPill.className = 'flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-mono bg-emerald-950/50 text-emerald-400 border border-emerald-800/50';
-    connectionPill.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Connected</span>';
-    connectBtn.textContent = 'Disconnect';
+    connectionPill.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Hardware Live (Streaming)</span>';
+    connectBtn.textContent = 'Disconnect Strip';
     connectBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-semibold bg-red-500 hover:bg-red-400 text-white transition-all shadow-md active:scale-95 cursor-pointer';
   } else if (status === 'connecting') {
     connectionPill.className = 'flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-mono bg-amber-950/50 text-amber-400 border border-amber-800/50';
-    connectionPill.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-400 animate-spin"></span><span>Connecting...</span>';
+    connectionPill.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400 animate-spin"></span><span>${message || 'Connecting...'}</span>`;
   } else {
     connectionPill.className = 'flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-mono bg-red-950/40 text-red-400 border border-red-800/40';
-    connectionPill.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span><span>Disconnected</span>';
+    connectionPill.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span><span>Disconnected (Simulator Only)</span>';
     connectBtn.textContent = 'Connect USB Strip';
     connectBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500 hover:bg-cyan-400 text-black transition-all shadow-md shadow-cyan-500/20 active:scale-95 cursor-pointer';
     if (message && status === 'error') {
@@ -401,13 +413,29 @@ function animate(now: number) {
     playlistCurrentNum.textContent = `Scene ${sceneIdx + 1} of ${SCENE_METADATA.length}`;
   } else if (settings.activeMode === 'scene') {
     framePixels = engine.renderScene(settings.selectedSceneId, t);
+    const found = SCENE_METADATA.find((s) => s.id === settings.selectedSceneId);
+    if (found) {
+      activeSceneTitle.textContent = found.name;
+      const sceneIdx = SCENE_METADATA.findIndex((s) => s.id === settings.selectedSceneId);
+      playlistCurrentNum.textContent = `Scene ${sceneIdx + 1} of ${SCENE_METADATA.length} (Locked)`;
+      playlistProgressBar.style.width = '100%';
+    }
   } else if (settings.activeMode === 'solid') {
     const rgb = hexToRgb(settings.solidColor);
     framePixels = new Array(settings.ledCount).fill(rgb);
+    activeSceneTitle.textContent = `Static Solid Color: ${settings.solidColor.toUpperCase()}`;
+    playlistCurrentNum.textContent = 'Solid Color Mode';
+    playlistProgressBar.style.width = '100%';
   } else if (settings.activeMode === 'screen') {
     framePixels = screenDriver.sampleFrame(settings.ledCount);
+    activeSceneTitle.textContent = '🖥️ Screen Edge Ambilight Mirroring';
+    playlistCurrentNum.textContent = 'Live Screen Mirror';
+    playlistProgressBar.style.width = '100%';
   } else if (settings.activeMode === 'audio') {
     framePixels = audioDriver.sampleFrame(settings.ledCount, settings.audioSensitivity, t);
+    activeSceneTitle.textContent = '🎵 Sound & Music Reactive Visualizer';
+    playlistCurrentNum.textContent = 'Audio Reactive Mode';
+    playlistProgressBar.style.width = '100%';
   } else {
     framePixels = new Array(settings.ledCount).fill([0, 0, 0]);
   }

@@ -7,6 +7,8 @@ export class WebSerialDriver {
   private status: ConnectionStatus = 'disconnected';
   private onStatusChange?: (status: ConnectionStatus, message?: string) => void;
   private isWriting = false;
+  private isReady = false;
+  private lastSendTime = 0;
 
   constructor(onStatusChange?: (status: ConnectionStatus, message?: string) => void) {
     this.onStatusChange = onStatusChange;
@@ -31,6 +33,12 @@ export class WebSerialDriver {
       this.port = await (navigator as any).serial.requestPort();
       await this.port.open({ baudRate });
       this.writer = this.port.writable.getWriter();
+
+      // Wait 1.8s for the Arduino / microcontroller bootloader reset to settle
+      this.updateStatus('connecting', 'Synchronizing with controller...');
+      await new Promise((r) => setTimeout(r, 1800));
+      this.isReady = true;
+
       this.updateStatus('connected', `Connected @ ${baudRate} baud`);
       return true;
     } catch (err: any) {
@@ -41,9 +49,21 @@ export class WebSerialDriver {
   }
 
   public async disconnect(): Promise<void> {
+    this.isReady = false;
     try {
       if (this.writer) {
         try {
+          // Send blackout frame so strip does not remain frozen
+          const numLeds = 150;
+          const count = numLeds - 1;
+          const blackBuf = new Uint8Array(6 + numLeds * 3);
+          blackBuf[0] = 0x41;
+          blackBuf[1] = 0x64;
+          blackBuf[2] = 0x61;
+          blackBuf[3] = (count >> 8) & 0xff;
+          blackBuf[4] = count & 0xff;
+          blackBuf[5] = ((count >> 8) & 0xff) ^ (count & 0xff) ^ 0x55;
+          await this.writer.write(blackBuf);
           await this.writer.close();
         } catch {
           // ignore stream close errors
@@ -69,9 +89,17 @@ export class WebSerialDriver {
     colorOrder: 'RGB' | 'GRB' | 'BGR' = 'RGB',
     applyGamma = true
   ): Promise<void> {
-    if (!this.writer || this.status !== 'connected' || this.isWriting) {
+    if (!this.writer || this.status !== 'connected' || !this.isReady || this.isWriting) {
       return;
     }
+
+    // Rate-limit serial transmission to ~28-30 FPS (~36ms interval)
+    // 150 LEDs * 3 + 6 bytes = 456 bytes. At 115200 baud (11520 B/s), 1 frame takes ~40ms to transmit!
+    const now = performance.now();
+    if (now - this.lastSendTime < 36) {
+      return;
+    }
+    this.lastSendTime = now;
 
     const numLeds = pixels.length;
     const count = numLeds - 1;
