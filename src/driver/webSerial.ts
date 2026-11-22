@@ -9,6 +9,19 @@ export class WebSerialDriver {
   private isWriting = false;
   private isReady = false;
   private lastSendTime = 0;
+  private baudRate = 115200;
+  private lastNumLeds = 150;
+  private frameBuf: Uint8Array | null = null;
+  private consecutiveErrors = 0;
+  private readonly handlePortDisconnect = (ev: any) => {
+    if (this.port && (!ev?.target || ev.target === this.port)) {
+      this.port = null;
+      this.writer = null;
+      this.isReady = false;
+      this.isWriting = false;
+      this.updateStatus('disconnected', 'USB strip unplugged');
+    }
+  };
 
   constructor(onStatusChange?: (status: ConnectionStatus, message?: string) => void) {
     this.onStatusChange = onStatusChange;
@@ -29,32 +42,42 @@ export class WebSerialDriver {
     }
 
     try {
+      this.baudRate = baudRate;
+      this.consecutiveErrors = 0;
       this.updateStatus('connecting', 'Waiting for port selection...');
       this.port = await (navigator as any).serial.requestPort();
       await this.port.open({ baudRate });
       this.writer = this.port.writable.getWriter();
+      (navigator as any).serial.addEventListener?.('disconnect', this.handlePortDisconnect);
 
       // Wait 1.8s for the Arduino / microcontroller bootloader reset to settle
       this.updateStatus('connecting', 'Synchronizing with controller...');
       await new Promise((r) => setTimeout(r, 1800));
+      if (!this.port || !this.writer) {
+        return false;
+      }
       this.isReady = true;
 
       this.updateStatus('connected', `Connected @ ${baudRate} baud`);
       return true;
     } catch (err: any) {
       this.updateStatus('error', err?.message || 'Failed to open serial port');
-      this.disconnect();
+      await this.disconnect();
       return false;
     }
   }
 
   public async disconnect(): Promise<void> {
     this.isReady = false;
+    this.isWriting = false;
+    if (this.isSupported()) {
+      (navigator as any).serial.removeEventListener?.('disconnect', this.handlePortDisconnect);
+    }
     try {
       if (this.writer) {
         try {
-          // Send blackout frame so strip does not remain frozen
-          const numLeds = 150;
+          // Send blackout frame matching the active strip length so LEDs do not remain frozen
+          const numLeds = Math.max(1, this.lastNumLeds);
           const count = numLeds - 1;
           const blackBuf = new Uint8Array(6 + numLeds * 3);
           blackBuf[0] = 0x41;
@@ -93,23 +116,31 @@ export class WebSerialDriver {
       return;
     }
 
-    // Rate-limit serial transmission to ~28-30 FPS (~36ms interval)
-    // 150 LEDs * 3 + 6 bytes = 456 bytes. At 115200 baud (11520 B/s), 1 frame takes ~40ms to transmit!
+    const numLeds = pixels.length;
+    if (numLeds <= 0) {
+      return;
+    }
+    this.lastNumLeds = numLeds;
+
+    // Dynamically pace frames to the serial link capacity (10 bits/byte in 8N1)
+    const totalBytes = 6 + numLeds * 3;
+    const minIntervalMs = Math.max(16, Math.ceil(((totalBytes * 10) / this.baudRate) * 1000) + 2);
     const now = performance.now();
-    if (now - this.lastSendTime < 36) {
+    if (now - this.lastSendTime < minIntervalMs) {
       return;
     }
     this.lastSendTime = now;
 
-    const numLeds = pixels.length;
     const count = numLeds - 1;
     const hi = (count >> 8) & 0xff;
     const lo = count & 0xff;
     const chk = hi ^ lo ^ 0x55;
 
-    // Buffer: 6-byte header + 3 bytes per LED
-    const totalBytes = 6 + numLeds * 3;
-    const buffer = new Uint8Array(totalBytes);
+    // Reuse frame buffer to eliminate per-frame GC allocation churn
+    if (!this.frameBuf || this.frameBuf.length !== totalBytes) {
+      this.frameBuf = new Uint8Array(totalBytes);
+    }
+    const buffer = this.frameBuf;
     buffer[0] = 0x41; // 'A'
     buffer[1] = 0x64; // 'd'
     buffer[2] = 0x61; // 'a'
@@ -151,8 +182,19 @@ export class WebSerialDriver {
     try {
       this.isWriting = true;
       await this.writer.write(buffer);
+      this.consecutiveErrors = 0;
     } catch (err: any) {
+      this.consecutiveErrors++;
       console.warn('Serial write dropped frame:', err);
+      const isFatal =
+        err?.name === 'NetworkError' ||
+        err?.name === 'InvalidStateError' ||
+        this.consecutiveErrors >= 5;
+      if (isFatal) {
+        this.isWriting = false;
+        await this.disconnect();
+        return;
+      }
     } finally {
       this.isWriting = false;
     }
