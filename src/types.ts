@@ -2,6 +2,10 @@ export type RGB = [number, number, number]; // 0.0 to 1.0
 
 export type AppMode = 'playlist' | 'scene' | 'solid' | 'screen' | 'audio';
 
+export type AudioVisualizerStyle = 'spectrum' | 'wave' | 'vu';
+
+export type PreviewLayout = 'strip' | 'monitor';
+
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 export interface SceneMeta {
@@ -25,5 +29,12 @@ export interface AppSettings {
   activeMode: AppMode;
   solidColor: string; // hex
   screenCaptureFps: number;
+  screenSmoothing: number; // EMA alpha (0.1 = ultra smooth, 1.0 = raw instant)
+  fourSidedMonitor: boolean;
   audioSensitivity: number;
+  audioStyle: AudioVisualizerStyle;
+  previewLayout: PreviewLayout;
+  reverseStrip: boolean;
+  startOffset: number;
+  whiteBalance: [number, number, number];
 }

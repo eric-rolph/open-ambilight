@@ -1,5 +1,5 @@
 import { RGB, ConnectionStatus } from '../types';
-import { clamp01, gamma } from '../engine/math';
+import { computeMinFrameIntervalMs, encodeAdalightFrame, FrameEncodeOptions } from './protocol';
 
 export class WebSerialDriver {
   private port: any = null;
@@ -110,7 +110,8 @@ export class WebSerialDriver {
     pixels: RGB[],
     brightness: number,
     colorOrder: 'RGB' | 'GRB' | 'BGR' = 'RGB',
-    applyGamma = true
+    applyGamma = true,
+    extra: Partial<FrameEncodeOptions> = {}
   ): Promise<void> {
     if (!this.writer || this.status !== 'connected' || !this.isReady || this.isWriting) {
       return;
@@ -123,61 +124,26 @@ export class WebSerialDriver {
     this.lastNumLeds = numLeds;
 
     // Dynamically pace frames to the serial link capacity (10 bits/byte in 8N1)
-    const totalBytes = 6 + numLeds * 3;
-    const minIntervalMs = Math.max(16, Math.ceil(((totalBytes * 10) / this.baudRate) * 1000) + 2);
+    const minIntervalMs = computeMinFrameIntervalMs(numLeds, this.baudRate);
     const now = performance.now();
     if (now - this.lastSendTime < minIntervalMs) {
       return;
     }
     this.lastSendTime = now;
 
-    const count = numLeds - 1;
-    const hi = (count >> 8) & 0xff;
-    const lo = count & 0xff;
-    const chk = hi ^ lo ^ 0x55;
-
-    // Reuse frame buffer to eliminate per-frame GC allocation churn
-    if (!this.frameBuf || this.frameBuf.length !== totalBytes) {
-      this.frameBuf = new Uint8Array(totalBytes);
-    }
+    this.frameBuf = encodeAdalightFrame(
+      pixels,
+      {
+        brightness,
+        colorOrder,
+        applyGamma,
+        whiteBalance: extra.whiteBalance,
+        reverse: extra.reverse,
+        startOffset: extra.startOffset,
+      },
+      this.frameBuf
+    );
     const buffer = this.frameBuf;
-    buffer[0] = 0x41; // 'A'
-    buffer[1] = 0x64; // 'd'
-    buffer[2] = 0x61; // 'a'
-    buffer[3] = hi;
-    buffer[4] = lo;
-    buffer[5] = chk;
-
-    let offset = 6;
-    for (let i = 0; i < numLeds; i++) {
-      let r = pixels[i][0] * brightness;
-      let g = pixels[i][1] * brightness;
-      let b = pixels[i][2] * brightness;
-
-      if (applyGamma) {
-        r = gamma(r, 2.2);
-        g = gamma(g, 2.2);
-        b = gamma(b, 2.2);
-      }
-
-      const rb = Math.floor(clamp01(r) * 255);
-      const gb = Math.floor(clamp01(g) * 255);
-      const bb = Math.floor(clamp01(b) * 255);
-
-      if (colorOrder === 'GRB') {
-        buffer[offset++] = gb;
-        buffer[offset++] = rb;
-        buffer[offset++] = bb;
-      } else if (colorOrder === 'BGR') {
-        buffer[offset++] = bb;
-        buffer[offset++] = gb;
-        buffer[offset++] = rb;
-      } else {
-        buffer[offset++] = rb;
-        buffer[offset++] = gb;
-        buffer[offset++] = bb;
-      }
-    }
 
     try {
       this.isWriting = true;

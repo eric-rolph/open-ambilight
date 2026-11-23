@@ -84,8 +84,11 @@
               <span>Nerf Dart Dueling Blasters</span>
             </div>
           </div>
-          <!-- Telemetry Badges -->
+          <!-- Telemetry Badges & Preview Layout Toggle -->
           <div class="flex items-center space-x-2 text-xs font-mono text-slate-400">
+            <button id="previewLayoutBtn" class="px-2.5 py-0.5 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 rounded border border-cyan-500/40 cursor-pointer transition-colors" title="Toggle Linear Strip vs Monitor Perimeter Halo">
+              View: Monitor Halo
+            </button>
             <span class="px-2 py-0.5 bg-white/5 rounded border border-white/10" id="fpsBadge">60 FPS</span>
             <span class="px-2 py-0.5 bg-white/5 rounded border border-white/10" id="ledCountBadge">150 LEDs</span>
             <span class="px-2 py-0.5 bg-white/5 rounded border border-white/10 hidden sm:inline" id="protocolBadge">Adalight 115200</span>
@@ -93,7 +96,7 @@
         </div>
 
         <!-- Canvas Container -->
-        <div id="stripCanvasContainer" class="w-full h-32 sm:h-40 rounded-xl relative cursor-crosshair"></div>
+        <div id="stripCanvasContainer" class="w-full h-40 sm:h-52 rounded-xl relative cursor-crosshair"></div>
 
         <!-- Playlist Progress Bar -->
         <div id="playlistProgressContainer" class="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-400">
@@ -230,10 +233,10 @@
       </section>
 
       <!-- Panel D: Screen Mirroring -->
-      <section id="panelScreen" class="mode-panel hidden glass-panel rounded-2xl p-6 space-y-4">
+      <section id="panelScreen" class="mode-panel hidden glass-panel rounded-2xl p-6 space-y-5">
         <div>
           <h3 class="text-base font-bold text-white mb-1">Ambilight Screen Mirroring</h3>
-          <p class="text-xs text-slate-400">Captures your screen perimeter in real-time and extends display colors to the wall behind your monitor.</p>
+          <p class="text-xs text-slate-400">Captures your screen perimeter with border-zone box averaging &amp; EMA smoothing and extends display colors to the wall behind your monitor.</p>
         </div>
         <div class="p-6 rounded-xl border border-dashed border-white/20 text-center space-y-3">
           <button id="toggleScreenBtn" class="px-6 py-2.5 rounded-lg font-semibold bg-cyan-500 hover:bg-cyan-400 text-black transition-all cursor-pointer shadow-lg shadow-cyan-500/20">
@@ -241,24 +244,55 @@
           </button>
           <p class="text-xs text-slate-400">Uses native HTML5 getDisplayMedia. Select entire screen or game window.</p>
         </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="bg-black/30 rounded-xl p-4 border border-white/5">
+            <label class="block text-xs font-mono text-slate-300 mb-2">Monitor Perimeter Layout</label>
+            <select id="perimeterLayoutSelect" class="w-full bg-black/50 border border-white/10 rounded px-3 py-1.5 font-mono text-xs text-white cursor-pointer">
+              <option value="3" selected>3-Sided (Left → Top → Right)</option>
+              <option value="4">4-Sided Full Perimeter (Left → Top → Right → Bottom)</option>
+            </select>
+          </div>
+          <div class="bg-black/30 rounded-xl p-4 border border-white/5">
+            <div class="flex justify-between text-xs font-mono text-slate-300 mb-2">
+              <span>Color Transition Smoothing (EMA)</span>
+              <span id="screenSmoothValue">35%</span>
+            </div>
+            <input id="screenSmoothInput" type="range" min="10" max="100" step="5" value="35" class="w-full accent-cyan-400 cursor-pointer" />
+          </div>
+        </div>
       </section>
 
       <!-- Panel E: Music Reactive Visualizer -->
-      <section id="panelAudio" class="mode-panel hidden glass-panel rounded-2xl p-6 space-y-4">
+      <section id="panelAudio" class="mode-panel hidden glass-panel rounded-2xl p-6 space-y-5">
         <div>
-          <h3 class="text-base font-bold text-white mb-1">Sound & Music Reactive Visualizer</h3>
-          <p class="text-xs text-slate-400">Uses Web Audio API to detect bass kicks and map frequencies across the strip.</p>
+          <h3 class="text-base font-bold text-white mb-1">Sound &amp; Music Reactive Visualizer</h3>
+          <p class="text-xs text-slate-400">Uses Web Audio API FFT to react to microphone input or shared tab/system audio in real time.</p>
         </div>
         <div class="p-6 rounded-xl border border-dashed border-white/20 text-center space-y-4">
-          <button id="toggleAudioBtn" class="px-6 py-2.5 rounded-lg font-semibold bg-fuchsia-500 hover:bg-fuchsia-400 text-black transition-all cursor-pointer shadow-lg shadow-fuchsia-500/20">
-            Activate Microphone / Audio
-          </button>
-          <div class="max-w-xs mx-auto">
-            <div class="flex justify-between text-xs font-mono text-slate-300 mb-1">
-              <span>Sensitivity</span>
-              <span id="audioSensValue">1.0x</span>
+          <div class="flex flex-wrap justify-center gap-3">
+            <button id="toggleAudioBtn" class="px-5 py-2.5 rounded-lg font-semibold bg-fuchsia-500 hover:bg-fuchsia-400 text-black transition-all cursor-pointer shadow-lg shadow-fuchsia-500/20">
+              Activate Microphone
+            </button>
+            <button id="toggleSystemAudioBtn" class="px-5 py-2.5 rounded-lg font-semibold bg-indigo-500/90 hover:bg-indigo-400 text-white transition-all cursor-pointer shadow-lg shadow-indigo-500/20">
+              Capture Tab / System Audio
+            </button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto text-left">
+            <div>
+              <label class="block text-xs font-mono text-slate-300 mb-1">Visualizer Style</label>
+              <select id="audioStyleSelect" class="w-full bg-black/50 border border-white/10 rounded px-3 py-1.5 font-mono text-xs text-white cursor-pointer">
+                <option value="spectrum" selected>Dual Spectrum + Bass Flash</option>
+                <option value="wave">Traveling Bass Shockwave</option>
+                <option value="vu">Stereo Mirror VU Meter</option>
+              </select>
             </div>
-            <input id="audioSensInput" type="range" min="0.2" max="3.0" step="0.1" value="1.0" class="w-full accent-fuchsia-400 cursor-pointer" />
+            <div>
+              <div class="flex justify-between text-xs font-mono text-slate-300 mb-1">
+                <span>Sensitivity</span>
+                <span id="audioSensValue">1.0x</span>
+              </div>
+              <input id="audioSensInput" type="range" min="0.2" max="3.0" step="0.1" value="1.0" class="w-full accent-fuchsia-400 cursor-pointer" />
+            </div>
           </div>
         </div>
       </section>
@@ -306,13 +340,50 @@
           </div>
         </div>
 
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-4 border-t border-white/5">
+          <div>
+            <div class="flex justify-between text-xs font-mono text-slate-300 mb-1">
+              <span>Start LED Offset</span>
+              <span id="startOffsetValue">0</span>
+            </div>
+            <input id="startOffsetInput" type="range" min="0" max="149" value="0" class="w-full accent-cyan-400 cursor-pointer" />
+          </div>
+          <div>
+            <div class="flex justify-between text-xs font-mono text-rose-300 mb-1">
+              <span>Red Gain</span>
+              <span id="wbRValue">100%</span>
+            </div>
+            <input id="wbRInput" type="range" min="40" max="100" value="100" class="w-full accent-rose-400 cursor-pointer" />
+          </div>
+          <div>
+            <div class="flex justify-between text-xs font-mono text-emerald-300 mb-1">
+              <span>Green Gain</span>
+              <span id="wbGValue">100%</span>
+            </div>
+            <input id="wbGInput" type="range" min="40" max="100" value="100" class="w-full accent-emerald-400 cursor-pointer" />
+          </div>
+          <div>
+            <div class="flex justify-between text-xs font-mono text-sky-300 mb-1">
+              <span>Blue Gain</span>
+              <span id="wbBValue">100%</span>
+            </div>
+            <input id="wbBInput" type="range" min="40" max="100" value="100" class="w-full accent-sky-400 cursor-pointer" />
+          </div>
+          <div class="flex items-center">
+            <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
+              <input id="reverseStripToggle" type="checkbox" class="accent-cyan-400 rounded" />
+              <span>Reverse LED Direction</span>
+            </label>
+          </div>
+        </div>
+
         <div class="flex flex-wrap items-center justify-between pt-4 border-t border-white/5 gap-4 text-xs text-slate-400">
           <label class="flex items-center space-x-2 cursor-pointer">
             <input id="gammaToggle" type="checkbox" checked class="accent-cyan-400 rounded" />
             <span>Perceptual Gamma 2.2 Correction (Deep blacks, crisp contrast)</span>
           </label>
           <div class="flex items-center space-x-2">
-            <span>Compatible with: WS2812B, WS2811, SK6812, APA102, Arduino Adalight Kits</span>
+            <span>Settings auto-saved locally &bull; WS2812B, WS2811, SK6812, APA102, Adalight</span>
           </div>
         </div>
       </section>

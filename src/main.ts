@@ -1,14 +1,17 @@
 import './style.css';
-import { AppMode, AppSettings, ConnectionStatus, RGB } from './types';
+import { AppMode, AppSettings, AudioVisualizerStyle, ConnectionStatus, RGB } from './types';
 import { WebSerialDriver } from './driver/webSerial';
 import { ScreenCaptureDriver } from './driver/screenCapture';
 import { AudioReactiveDriver } from './driver/audioReactive';
+import { remapStripPixels } from './driver/protocol';
 import { AnimationEngine, SCENE_METADATA } from './engine/engine';
 import { VirtualStrip } from './components/VirtualStrip';
 import { hexToRgb } from './engine/math';
 
-// App Default Settings
-const settings: AppSettings = {
+const STORAGE_KEY = 'open-ambilight-settings-v1';
+
+// App Default Settings (restored from localStorage when available)
+const DEFAULT_SETTINGS: AppSettings = {
   ledCount: 150,
   brightness: 0.85,
   baudRate: 115200,
@@ -20,8 +23,42 @@ const settings: AppSettings = {
   activeMode: 'playlist',
   solidColor: '#00e5ff',
   screenCaptureFps: 30,
+  screenSmoothing: 0.35,
+  fourSidedMonitor: false,
   audioSensitivity: 1.0,
+  audioStyle: 'spectrum',
+  previewLayout: 'monitor',
+  reverseStrip: false,
+  startOffset: 0,
+  whiteBalance: [1.0, 1.0, 1.0],
 };
+
+function loadSettings(): AppSettings {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_SETTINGS, whiteBalance: [...DEFAULT_SETTINGS.whiteBalance] };
+    const parsed = JSON.parse(raw);
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      whiteBalance: Array.isArray(parsed?.whiteBalance) && parsed.whiteBalance.length === 3
+        ? [Number(parsed.whiteBalance[0]), Number(parsed.whiteBalance[1]), Number(parsed.whiteBalance[2])]
+        : [...DEFAULT_SETTINGS.whiteBalance],
+    };
+  } catch {
+    return { ...DEFAULT_SETTINGS, whiteBalance: [...DEFAULT_SETTINGS.whiteBalance] };
+  }
+}
+
+function saveSettings(): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // ignore storage quota / private mode
+  }
+}
+
+const settings: AppSettings = loadSettings();
 
 let isPaused = false;
 let deferredPrompt: any = null;
@@ -70,9 +107,27 @@ const moodPresetsGrid = document.getElementById('moodPresetsGrid')!;
 const scenesGrid = document.getElementById('scenesGrid')!;
 
 const toggleScreenBtn = document.getElementById('toggleScreenBtn') as HTMLButtonElement;
+const perimeterLayoutSelect = document.getElementById('perimeterLayoutSelect') as HTMLSelectElement;
+const screenSmoothInput = document.getElementById('screenSmoothInput') as HTMLInputElement;
+const screenSmoothValue = document.getElementById('screenSmoothValue')!;
+
 const toggleAudioBtn = document.getElementById('toggleAudioBtn') as HTMLButtonElement;
+const toggleSystemAudioBtn = document.getElementById('toggleSystemAudioBtn') as HTMLButtonElement;
+const audioStyleSelect = document.getElementById('audioStyleSelect') as HTMLSelectElement;
 const audioSensInput = document.getElementById('audioSensInput') as HTMLInputElement;
 const audioSensValue = document.getElementById('audioSensValue')!;
+
+const previewLayoutBtn = document.getElementById('previewLayoutBtn') as HTMLButtonElement;
+const protocolBadge = document.getElementById('protocolBadge')!;
+const startOffsetInput = document.getElementById('startOffsetInput') as HTMLInputElement;
+const startOffsetValue = document.getElementById('startOffsetValue')!;
+const reverseStripToggle = document.getElementById('reverseStripToggle') as HTMLInputElement;
+const wbRInput = document.getElementById('wbRInput') as HTMLInputElement;
+const wbGInput = document.getElementById('wbGInput') as HTMLInputElement;
+const wbBInput = document.getElementById('wbBInput') as HTMLInputElement;
+const wbRValue = document.getElementById('wbRValue')!;
+const wbGValue = document.getElementById('wbGValue')!;
+const wbBValue = document.getElementById('wbBValue')!;
 
 // Curated Mood Presets
 const MOOD_PRESETS = [
@@ -131,29 +186,117 @@ function initUI() {
     });
   });
 
+  // Sync UI controls with persisted settings
+  brightnessInput.value = String(Math.round(settings.brightness * 100));
+  brightnessValue.textContent = `${Math.round(settings.brightness * 100)}%`;
+  ledCountInput.value = String(settings.ledCount);
+  ledCountBadge.textContent = `${settings.ledCount} LEDs`;
+  colorOrderSelect.value = settings.colorOrder;
+  baudRateSelect.value = String(settings.baudRate);
+  protocolBadge.textContent = `Adalight ${settings.baudRate}`;
+  gammaToggle.checked = settings.applyGamma;
+  sceneDurInput.value = String(settings.sceneDuration);
+  sceneDurValue.textContent = `${settings.sceneDuration} seconds`;
+  crossfadeInput.value = String(settings.crossfadeDuration);
+  crossfadeValue.textContent = `${settings.crossfadeDuration} seconds`;
+  perimeterLayoutSelect.value = settings.fourSidedMonitor ? '4' : '3';
+  screenSmoothInput.value = String(Math.round(settings.screenSmoothing * 100));
+  screenSmoothValue.textContent = `${Math.round(settings.screenSmoothing * 100)}%`;
+  audioStyleSelect.value = settings.audioStyle;
+  audioSensInput.value = String(settings.audioSensitivity);
+  audioSensValue.textContent = `${settings.audioSensitivity.toFixed(1)}x`;
+  startOffsetInput.max = String(Math.max(0, settings.ledCount - 1));
+  startOffsetInput.value = String(settings.startOffset);
+  startOffsetValue.textContent = String(settings.startOffset);
+  reverseStripToggle.checked = settings.reverseStrip;
+  wbRInput.value = String(Math.round(settings.whiteBalance[0] * 100));
+  wbGInput.value = String(Math.round(settings.whiteBalance[1] * 100));
+  wbBInput.value = String(Math.round(settings.whiteBalance[2] * 100));
+  wbRValue.textContent = `${wbRInput.value}%`;
+  wbGValue.textContent = `${wbGInput.value}%`;
+  wbBValue.textContent = `${wbBInput.value}%`;
+  virtualStrip.setLayout(settings.previewLayout, settings.fourSidedMonitor);
+  previewLayoutBtn.textContent = settings.previewLayout === 'monitor' ? 'View: Monitor Halo' : 'View: Linear Strip';
+
+  // Preview layout toggle
+  previewLayoutBtn.addEventListener('click', () => {
+    settings.previewLayout = settings.previewLayout === 'monitor' ? 'strip' : 'monitor';
+    virtualStrip.setLayout(settings.previewLayout, settings.fourSidedMonitor);
+    previewLayoutBtn.textContent = settings.previewLayout === 'monitor' ? 'View: Monitor Halo' : 'View: Linear Strip';
+    saveSettings();
+  });
+
   // Hardware Settings Listeners
   brightnessInput.addEventListener('input', () => {
     settings.brightness = parseInt(brightnessInput.value) / 100;
     brightnessValue.textContent = `${brightnessInput.value}%`;
+    saveSettings();
   });
 
   ledCountInput.addEventListener('change', () => {
-    const count = parseInt(ledCountInput.value) || 150;
+    const count = Math.max(10, Math.min(600, parseInt(ledCountInput.value) || 150));
     settings.ledCount = count;
     engine.setLedCount(count);
     ledCountBadge.textContent = `${count} LEDs`;
+    startOffsetInput.max = String(count - 1);
+    if (settings.startOffset >= count) {
+      settings.startOffset = 0;
+      startOffsetInput.value = '0';
+      startOffsetValue.textContent = '0';
+    }
+    saveSettings();
   });
 
   colorOrderSelect.addEventListener('change', () => {
     settings.colorOrder = colorOrderSelect.value as any;
+    saveSettings();
   });
 
   baudRateSelect.addEventListener('change', () => {
     settings.baudRate = parseInt(baudRateSelect.value);
+    protocolBadge.textContent = `Adalight ${settings.baudRate}`;
+    saveSettings();
   });
 
   gammaToggle.addEventListener('change', () => {
     settings.applyGamma = gammaToggle.checked;
+    saveSettings();
+  });
+
+  // Calibration controls
+  startOffsetInput.addEventListener('input', () => {
+    settings.startOffset = parseInt(startOffsetInput.value) || 0;
+    startOffsetValue.textContent = String(settings.startOffset);
+    saveSettings();
+  });
+  reverseStripToggle.addEventListener('change', () => {
+    settings.reverseStrip = reverseStripToggle.checked;
+    saveSettings();
+  });
+  const updateWB = () => {
+    settings.whiteBalance = [
+      parseInt(wbRInput.value) / 100,
+      parseInt(wbGInput.value) / 100,
+      parseInt(wbBInput.value) / 100,
+    ];
+    wbRValue.textContent = `${wbRInput.value}%`;
+    wbGValue.textContent = `${wbGInput.value}%`;
+    wbBValue.textContent = `${wbBInput.value}%`;
+    saveSettings();
+  };
+  wbRInput.addEventListener('input', updateWB);
+  wbGInput.addEventListener('input', updateWB);
+  wbBInput.addEventListener('input', updateWB);
+
+  perimeterLayoutSelect.addEventListener('change', () => {
+    settings.fourSidedMonitor = perimeterLayoutSelect.value === '4';
+    virtualStrip.setLayout(settings.previewLayout, settings.fourSidedMonitor);
+    saveSettings();
+  });
+  screenSmoothInput.addEventListener('input', () => {
+    settings.screenSmoothing = parseInt(screenSmoothInput.value) / 100;
+    screenSmoothValue.textContent = `${screenSmoothInput.value}%`;
+    saveSettings();
   });
 
   // Playlist Controls
@@ -235,24 +378,41 @@ function initUI() {
     }
   });
 
-  // Audio Toggle
+  // Audio Toggle (Microphone + Tab/System Audio)
+  const syncAudioButtons = () => {
+    const active = audioDriver.getRunning();
+    toggleAudioBtn.textContent = active ? 'Stop Audio Visualizer' : 'Activate Microphone';
+    toggleAudioBtn.className = active
+      ? 'px-5 py-2.5 rounded-lg font-semibold bg-red-500 hover:bg-red-400 text-white transition-all cursor-pointer shadow-lg shadow-red-500/20'
+      : 'px-5 py-2.5 rounded-lg font-semibold bg-fuchsia-500 hover:bg-fuchsia-400 text-black transition-all cursor-pointer shadow-lg shadow-fuchsia-500/20';
+  };
+
   toggleAudioBtn.addEventListener('click', async () => {
     if (audioDriver.getRunning()) {
       audioDriver.stop();
-      toggleAudioBtn.textContent = 'Activate Microphone / Audio';
-      toggleAudioBtn.className = toggleAudioBtn.className.replace('bg-red-500', 'bg-fuchsia-500');
     } else {
-      const ok = await audioDriver.start();
-      if (ok) {
-        toggleAudioBtn.textContent = 'Stop Audio Visualizer';
-        toggleAudioBtn.className = toggleAudioBtn.className.replace('bg-fuchsia-500', 'bg-red-500');
-      }
+      await audioDriver.start();
     }
+    syncAudioButtons();
+  });
+
+  toggleSystemAudioBtn.addEventListener('click', async () => {
+    if (audioDriver.getRunning()) {
+      audioDriver.stop();
+    }
+    await audioDriver.startSystemAudio();
+    syncAudioButtons();
+  });
+
+  audioStyleSelect.addEventListener('change', () => {
+    settings.audioStyle = audioStyleSelect.value as AudioVisualizerStyle;
+    saveSettings();
   });
 
   audioSensInput.addEventListener('input', () => {
     settings.audioSensitivity = parseFloat(audioSensInput.value);
     audioSensValue.textContent = `${settings.audioSensitivity.toFixed(1)}x`;
+    saveSettings();
   });
 
   // PWA Install Prompt
@@ -427,25 +587,41 @@ function animate(now: number) {
     playlistCurrentNum.textContent = 'Solid Color Mode';
     playlistProgressBar.style.width = '100%';
   } else if (settings.activeMode === 'screen') {
-    framePixels = screenDriver.sampleFrame(settings.ledCount);
+    framePixels = screenDriver.sampleFrame(
+      settings.ledCount,
+      settings.screenSmoothing,
+      settings.fourSidedMonitor
+    );
     activeSceneTitle.textContent = '🖥️ Screen Edge Ambilight Mirroring';
-    playlistCurrentNum.textContent = 'Live Screen Mirror';
+    playlistCurrentNum.textContent = settings.fourSidedMonitor ? '4-Sided Screen Mirror' : '3-Sided Screen Mirror';
     playlistProgressBar.style.width = '100%';
   } else if (settings.activeMode === 'audio') {
-    framePixels = audioDriver.sampleFrame(settings.ledCount, settings.audioSensitivity, t);
+    framePixels = audioDriver.sampleFrame(
+      settings.ledCount,
+      settings.audioSensitivity,
+      t,
+      settings.audioStyle
+    );
     activeSceneTitle.textContent = '🎵 Sound & Music Reactive Visualizer';
-    playlistCurrentNum.textContent = 'Audio Reactive Mode';
+    playlistCurrentNum.textContent = `Audio Reactive (${settings.audioStyle})`;
     playlistProgressBar.style.width = '100%';
   } else {
     framePixels = new Array(settings.ledCount).fill([0, 0, 0]);
   }
 
-  // 1. Render to Virtual Simulator Canvas
-  virtualStrip.render(framePixels, settings.brightness);
+  // 1. Render to Virtual Simulator Canvas (preview reflects direction/offset + white balance)
+  const previewPixels = remapStripPixels(framePixels, settings.reverseStrip, settings.startOffset).map(
+    ([r, g, b]) => [r * settings.whiteBalance[0], g * settings.whiteBalance[1], b * settings.whiteBalance[2]] as RGB
+  );
+  virtualStrip.render(previewPixels, settings.brightness);
 
   // 2. Stream to Physical Hardware via Web Serial API
   if (serialDriver.getStatus() === 'connected') {
-    serialDriver.sendFrame(framePixels, settings.brightness, settings.colorOrder, settings.applyGamma);
+    serialDriver.sendFrame(framePixels, settings.brightness, settings.colorOrder, settings.applyGamma, {
+      whiteBalance: settings.whiteBalance,
+      reverse: settings.reverseStrip,
+      startOffset: settings.startOffset,
+    });
   }
 }
 
